@@ -237,7 +237,6 @@ export function checkMatch(
     };
   }
 
-  // No match: devolver ambas fichas a boca abajo y liberarlas.
   tiles[idx1] = { ...tile1, isFlipped: false, lockedBy: null };
   tiles[idx2] = { ...tile2, isFlipped: false, lockedBy: null };
 
