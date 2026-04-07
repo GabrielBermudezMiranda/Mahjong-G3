@@ -18,6 +18,10 @@ app.use(
   }),
 );
 
+app.get("/health", (_req, res) => {
+  res.json({ ok: true });
+});
+
 const httpServer = createServer(app);
 
 const io = new Server(httpServer, {

@@ -1,0 +1,91 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {userId}
+    // Fields:
+    //   - uid: string (required)
+    //   - displayName: string (required)
+    //   - photoURL: string (optional)
+    //   - totalWins: number (optional)
+    //   - totalScore: number (optional)
+    //
+    // Collection: games
+    // Document ID: {gameId}
+    // Fields:
+    //   - id: string (required)
+    //   - code: string (required)
+    //   - status: string (required, ['waiting', 'playing', 'finished'])
+    //   - hostId: string (required)
+    //   - players: list (required, max 5)
+    //   - currentTurnIndex: number (optional)
+    //   - tiles: list (optional)
+    //   - history: list (optional)
+    //   - startTime: number (optional)
+    //   - scores: map (optional)
+    //   - scoreHistory: list (optional)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "minecraftemily12345@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function isValidUser(data) {
+      return data.uid is string && data.uid.size() > 0 &&
+             data.displayName is string && data.displayName.size() > 0 && data.displayName.size() < 100;
+    }
+
+    function isValidGame(data) {
+      return data.code is string && data.code.size() == 6 &&
+             data.status in ['waiting', 'playing', 'finished'] &&
+             data.players is list && data.players.size() <= 5 &&
+             data.hostId is string &&
+             data.messages is list;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+      allow update: if isOwner(userId) && isValidUser(request.resource.data);
+    }
+
+    match /games/{gameId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidGame(request.resource.data) && request.resource.data.hostId == request.auth.uid;
+      allow update: if isAuthenticated() && isValidGame(request.resource.data);
+      allow delete: if isAuthenticated() && resource.data.hostId == request.auth.uid;
+    }
+    
+    match /test/connection {
+      allow read: if true;
+    }
+  }
+}
