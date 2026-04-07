@@ -7,7 +7,7 @@ import { setupSocket } from "./socket";
 const app = express();
 
 const defaultOrigin = "http://localhost:5173";
-const allowedOrigins = (process.env.CLIENT_ORIGIN ?? defaultOrigin)
+const allowedOrigins = (process.env.CLIENT_ORIGIN ?? process.env.CORS_ORIGIN ?? defaultOrigin)
   .split(",")
   .map((origin) => origin.trim())
   .filter((origin) => origin.length > 0);
