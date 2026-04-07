@@ -27,8 +27,9 @@ function getPlayerSelectedTiles(state: GameState, playerId: string): Tile[] {
   );
 }
 
-export function createGame(pairCount: number): GameState {
+export function createGame(pairCount: number, requiredPlayers = 5): GameState {
   const safePairCount = Math.max(1, pairCount);
+  const safeRequiredPlayers = Math.max(2, Math.min(8, requiredPlayers));
   const tiles: Tile[] = [];
 
   for (let pairIndex = 0; pairIndex < safePairCount; pairIndex += 1) {
@@ -57,6 +58,8 @@ export function createGame(pairCount: number): GameState {
     scoreHistory: [],
     isGameOver: false,
     startTime: null,
+    requiredPlayers: safeRequiredPlayers,
+    hasStarted: false,
   };
 }
 
@@ -79,15 +82,18 @@ export function addPlayer(
       isConnected: true,
     };
 
+    const connectedPlayers = players.filter((player) => player.isConnected).length;
+    const hasStarted = state.hasStarted || connectedPlayers >= state.requiredPlayers;
+
     return {
       ...state,
       players,
-      startTime: state.startTime ?? now,
+      hasStarted,
+      startTime: hasStarted ? state.startTime ?? now : state.startTime,
     };
   }
 
-  const MAX_PLAYERS = 5;
-  if (state.players.length >= MAX_PLAYERS) {
+  if (state.players.length >= state.requiredPlayers) {
     return state;
   }
 
@@ -101,11 +107,15 @@ export function addPlayer(
     },
   ];
 
+  const connectedPlayers = players.filter((player) => player.isConnected).length;
+  const hasStarted = state.hasStarted || connectedPlayers >= state.requiredPlayers;
+
   return {
     ...state,
     players,
     scoreHistory: [...state.scoreHistory, buildScoreSnapshot(players, now)],
-    startTime: state.startTime ?? now,
+    hasStarted,
+    startTime: hasStarted ? state.startTime ?? now : state.startTime,
   };
 }
 
@@ -134,6 +144,7 @@ export function selectTile(
 ): SelectTileResult {
   const hasPlayer = state.players.some((player) => player.id === playerId);
   if (!hasPlayer) return { newState: state, event: null };
+  if (!state.hasStarted) return { newState: state, event: null };
   if (state.isGameOver) return { newState: state, event: null };
 
   const tileIndex = state.tiles.findIndex((tile) => tile.id === tileId);
