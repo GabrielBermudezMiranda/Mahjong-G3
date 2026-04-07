@@ -245,7 +245,7 @@ export default function App() {
   const [tableTheme, setTableTheme] = useState<TableTheme>(TABLE_THEMES[0]);
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [scoreHistory, setScoreHistory] = useState<{ time: number; [key: string]: number }[]>([]);
-  const [opponents, setOpponents] = useState<{ name: string; score: number; color: string }[]>([]);
+  const [opponents, setOpponents] = useState<{ name: string; score: number; color: string; isUser?: boolean }[]>([]);
   const [combo, setCombo] = useState(0);
   const [stats, setStats] = useState({ matches: 0, clicks: 0 });
 
