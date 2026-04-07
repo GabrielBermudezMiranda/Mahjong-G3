@@ -89,6 +89,10 @@ export default function App() {
       };
       setSelectedRoom(createdRoom);
       setRooms((prev) => [createdRoom, ...prev.filter((room) => room.id !== createdRoom.id)]);
+
+      if (user) {
+        socketService.joinRoom(payload.roomId, user.name);
+      }
     };
 
     const onRoomError = (message: string) => {
