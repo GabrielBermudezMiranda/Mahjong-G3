@@ -10,6 +10,7 @@ interface RoomState {
 
 interface CreateRoomPayload {
 	name?: string;
+	playerName?: string;
 	requiredPlayers?: number;
 	pairCount?: number;
 }
@@ -38,6 +39,15 @@ function getRoomSummaries(): RoomSummary[] {
 		requiredPlayers: room.gameState.requiredPlayers,
 		hasStarted: room.gameState.hasStarted,
 	}));
+}
+
+function buildJoinedPayload(room: RoomState) {
+	return {
+		roomId: room.id,
+		name: room.name,
+		requiredPlayers: room.gameState.requiredPlayers,
+		gameState: room.gameState,
+	};
 }
 
 function emitRoomList(io: Server): void {
@@ -102,6 +112,21 @@ function joinRoom(
 	playerRoomBySocket.set(socket.id, roomId);
 
 	io.to(roomId).emit("game:state", room.gameState);
+	socket.emit("room:joined", buildJoinedPayload(room));
+	emitRoomList(io);
+}
+
+function leaveCurrentRoom(io: Server, socket: Socket): void {
+	const roomId = playerRoomBySocket.get(socket.id);
+	if (!roomId) return;
+
+	const room = rooms.get(roomId);
+	if (!room) return;
+
+	room.gameState = removePlayer(room.gameState, socket.id);
+	playerRoomBySocket.delete(socket.id);
+	socket.leave(roomId);
+	io.to(roomId).emit("game:state", room.gameState);
 	emitRoomList(io);
 }
 
@@ -126,6 +151,9 @@ export function setupSocket(io: Server): void {
 				name: room.name,
 				requiredPlayers: room.gameState.requiredPlayers,
 			});
+			if (payload?.playerName?.trim()) {
+				joinRoom(io, socket, room.id, payload.playerName);
+			}
 		});
 
 		socket.on("room:join", (payload: JoinRoomPayload) => {
@@ -148,17 +176,12 @@ export function setupSocket(io: Server): void {
 			io.to(roomId).emit("game:state", room.gameState);
 		});
 
+		socket.on("room:leave", () => {
+			leaveCurrentRoom(io, socket);
+		});
+
 		socket.on("disconnect", () => {
-			const roomId = playerRoomBySocket.get(socket.id);
-			if (!roomId) return;
-
-			const room = rooms.get(roomId);
-			if (!room) return;
-
-			room.gameState = removePlayer(room.gameState, socket.id);
-			playerRoomBySocket.delete(socket.id);
-			io.to(roomId).emit("game:state", room.gameState);
-			emitRoomList(io);
+			leaveCurrentRoom(io, socket);
 		});
 	});
 }

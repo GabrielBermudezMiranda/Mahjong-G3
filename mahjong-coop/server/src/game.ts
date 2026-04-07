@@ -1,5 +1,12 @@
 import { GameState, Player, ScoreSnapshot, Tile } from "./types";
 
+const TILE_SYMBOLS = [
+  "🀇", "🀈", "🀉", "🀊", "🀋", "🀌", "🀍", "🀎", "🀏",
+  "🀐", "🀑", "🀒", "🀓", "🀔", "🀕", "🀖", "🀗", "🀘",
+  "🀙", "🀚", "🀛", "🀜", "🀝", "🀞", "🀟", "🀠", "🀡",
+  "🀀", "🀁", "🀂", "🀃", "🀄", "🀅", "🀆",
+];
+
 interface SelectTileResult {
   newState: GameState;
   event: string | null;
@@ -33,7 +40,7 @@ export function createGame(pairCount: number, requiredPlayers = 5): GameState {
   const tiles: Tile[] = [];
 
   for (let pairIndex = 0; pairIndex < safePairCount; pairIndex += 1) {
-    const symbol = `S${pairIndex + 1}`;
+    const symbol = TILE_SYMBOLS[pairIndex] ?? `M${pairIndex + 1}`;
     tiles.push({
       id: `tile-${pairIndex * 2 + 1}`,
       symbol,

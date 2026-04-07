@@ -6,24 +6,32 @@ import { setupSocket } from "./socket";
 
 const app = express();
 
+const clientOrigin = process.env.CLIENT_ORIGIN;
+const allowedOrigins = clientOrigin
+  ? clientOrigin.split(",").map((origin) => origin.trim()).filter(Boolean)
+  : ["http://localhost:3000", "http://localhost:5173"];
+const port = Number(process.env.PORT ?? 3001);
+
 app.use(
   cors({
-    origin: "http://localhost:5173",
+    origin: allowedOrigins,
   }),
 );
+
+app.get("/health", (_request, response) => {
+  response.json({ ok: true });
+});
 
 const httpServer = createServer(app);
 
 const io = new Server(httpServer, {
   cors: {
-    origin: "http://localhost:5173",
+    origin: allowedOrigins,
   },
 });
 
 setupSocket(io);
 
-const PORT = 3000;
-
-httpServer.listen(PORT, () => {
-  console.log("Server is running on http://localhost:3000");
+httpServer.listen(port, () => {
+  console.log(`Server is running on http://localhost:${port}`);
 });

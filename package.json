@@ -1,0 +1,14 @@
+{
+  "name": "mahjong-g3",
+  "private": true,
+  "workspaces": [
+    "remix_-mahjong-solitario-tortuga",
+    "mahjong-coop/server"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace remix_-mahjong-solitario-tortuga",
+    "dev": "npm run dev --workspace remix_-mahjong-solitario-tortuga",
+    "dev:client": "npm run dev --workspace remix_-mahjong-solitario-tortuga",
+    "dev:server": "npm run dev --workspace mahjong-coop/server"
+  }
+}
