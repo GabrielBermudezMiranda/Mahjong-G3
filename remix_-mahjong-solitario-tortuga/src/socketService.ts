@@ -33,7 +33,7 @@ export interface RoomSummary {
   hasStarted: boolean;
 }
 
-const SOCKET_SERVER_URL = (import.meta.env.VITE_SOCKET_URL as string) || 'http://localhost:3000';
+const SOCKET_SERVER_URL = (import.meta.env.VITE_SOCKET_URL as string) || 'https://mahjong-g3-production.up.railway.app';
 
 class SocketService {
   private socket: Socket | null = null;
@@ -42,17 +42,36 @@ class SocketService {
   connect(): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
+        if (this.socket) {
+          this.socket.disconnect();
+          this.socket = null;
+        }
+
         this.socket = io(SOCKET_SERVER_URL, {
+          transports: ['websocket', 'polling'],
+          withCredentials: false,
           reconnection: true,
           reconnectionDelay: 1000,
           reconnectionDelayMax: 5000,
           reconnectionAttempts: 10,
         });
 
+        const connectionTimeout = setTimeout(() => {
+          if (!this.socket?.connected) {
+            reject(new Error(`Failed to connect to server at ${SOCKET_SERVER_URL}`));
+          }
+        }, 5000);
+
         this.socket.on('connect', () => {
+          clearTimeout(connectionTimeout);
           console.log('Connected to server');
           this.emit('connected');
           resolve();
+        });
+
+        this.socket.on('connect_error', (error) => {
+          clearTimeout(connectionTimeout);
+          reject(error);
         });
 
         this.socket.on('disconnect', () => {
@@ -75,12 +94,6 @@ class SocketService {
         this.socket.on('room:error', (message: string) => {
           this.emit('room:error', message);
         });
-
-        setTimeout(() => {
-          if (!this.socket?.connected) {
-            reject(new Error('Failed to connect to server'));
-          }
-        }, 5000);
       } catch (e) {
         reject(e);
       }
