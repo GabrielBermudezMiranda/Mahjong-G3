@@ -489,10 +489,11 @@ export default function App() {
 										left: `${x}px`,
 										top: `${y}px`,
 										zIndex: tile.lockedBy ? 10 : 1,
+										pointerEvents: !gameState.hasStarted || tile.isMatched ? 'none' : 'auto',
 									}}
+									aria-disabled={!gameState.hasStarted || tile.isMatched}
 									whileHover={{ scale: gameState.hasStarted && !tile.isMatched ? 1.1 : 1 }}
 									whileTap={{ scale: gameState.hasStarted && !tile.isMatched ? 0.95 : 1 }}
-									disabled={!gameState.hasStarted || tile.isMatched}
 								>
 									{tile.isFlipped && (
 										<div className="w-full h-full flex items-center justify-center text-3xl font-bold">
