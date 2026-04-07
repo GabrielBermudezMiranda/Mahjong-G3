@@ -24,4 +24,14 @@ export interface GameState {
   scoreHistory: ScoreSnapshot[];
   isGameOver: boolean;
   startTime: number | null;
+  requiredPlayers: number;
+  hasStarted: boolean;
+}
+
+export interface RoomSummary {
+  id: string;
+  name: string;
+  currentPlayers: number;
+  requiredPlayers: number;
+  hasStarted: boolean;
 }
