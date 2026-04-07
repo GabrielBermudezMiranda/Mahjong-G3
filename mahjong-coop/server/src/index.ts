@@ -6,9 +6,15 @@ import { setupSocket } from "./socket";
 
 const app = express();
 
+const defaultOrigin = "http://localhost:5173";
+const allowedOrigins = (process.env.CLIENT_ORIGIN ?? defaultOrigin)
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter((origin) => origin.length > 0);
+
 app.use(
   cors({
-    origin: "http://localhost:5173",
+    origin: allowedOrigins,
   }),
 );
 
@@ -16,14 +22,14 @@ const httpServer = createServer(app);
 
 const io = new Server(httpServer, {
   cors: {
-    origin: "http://localhost:5173",
+    origin: allowedOrigins,
   },
 });
 
 setupSocket(io);
 
-const PORT = 3000;
+const PORT = Number(process.env.PORT ?? 3000);
 
 httpServer.listen(PORT, () => {
-  console.log("Server is running on http://localhost:3000");
+  console.log(`Server is running on http://localhost:${PORT}`);
 });

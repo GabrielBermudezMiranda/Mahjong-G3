@@ -173,3 +173,61 @@ export function useSocket() {
 	};
 }
 ```
+
+---
+
+## Despliegue Vercel
+
+Estado actual del repositorio:
+
+- El backend en `mahjong-coop/server` esta listo para produccion con `PORT` y `CLIENT_ORIGIN` por variables de entorno.
+- No existe aun la carpeta `mahjong-coop/client`, por lo tanto la configuracion real de Vercel todavia no puede completarse en este repo.
+
+### 1) Backend en Railway
+
+- Root directory del servicio: `mahjong-coop/server`
+- Build command: `npm install && npm run build`
+- Start command: `npm run start`
+
+Variables recomendadas en Railway:
+
+- `PORT`: lo define Railway automaticamente (no fijarlo manualmente salvo que lo necesites)
+- `CLIENT_ORIGIN`: URL publica del frontend en Vercel
+
+Ejemplo:
+
+```env
+CLIENT_ORIGIN=https://tu-proyecto.vercel.app
+```
+
+Cuando Railway te entregue la URL del backend, guardala para Vercel.
+
+### 2) Frontend en Vercel
+
+Cuando tengas la carpeta `client`:
+
+- Root directory en Vercel: `mahjong-coop/client`
+- Build command: `npm run build`
+- Output directory: `dist`
+
+Variable de entorno en Vercel:
+
+```env
+VITE_SERVER_URL=https://tu-backend.railway.app
+```
+
+### 3) Configuracion del hook
+
+En el frontend, usar:
+
+```ts
+const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3000';
+```
+
+### 4) Checklist rapido de entrega
+
+- Backend desplegado en Railway y respondiendo WebSocket.
+- Frontend desplegado en Vercel.
+- `CLIENT_ORIGIN` en Railway apunta al dominio Vercel.
+- `VITE_SERVER_URL` en Vercel apunta al dominio Railway.
+- Prueba final con dos navegadores y dos jugadores simultaneos.
