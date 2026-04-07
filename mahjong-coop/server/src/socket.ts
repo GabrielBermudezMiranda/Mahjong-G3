@@ -1,7 +1,7 @@
 import type { Server, Socket } from "socket.io";
 import { addPlayer, createGame, removePlayer, selectTile } from "./game";
 
-let gameState = createGame(18);
+let gameState = createGame(15);
 
 export function setupSocket(io: Server): void {
 	io.on("connection", (socket: Socket) => {

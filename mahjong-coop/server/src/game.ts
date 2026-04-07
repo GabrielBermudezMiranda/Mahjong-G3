@@ -1,26 +1,62 @@
-import { GameState, Tile } from "./types";
+import { GameState, Player, ScoreSnapshot, Tile } from "./types";
 
 interface SelectTileResult {
   newState: GameState;
-  event: null;
+  event: string | null;
+}
+
+function shuffleInPlace<T>(items: T[]): void {
+  for (let i = items.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [items[i], items[j]] = [items[j], items[i]];
+  }
+}
+
+function buildScoreSnapshot(players: Player[], timestamp: number): ScoreSnapshot {
+  const scores: Record<string, number> = {};
+  for (const player of players) {
+    scores[player.id] = player.score;
+  }
+  return { timestamp, scores };
+}
+
+function getPlayerSelectedTiles(state: GameState, playerId: string): Tile[] {
+  return state.tiles.filter(
+    (tile) =>
+      tile.lockedBy === playerId && !tile.isMatched && tile.isFlipped,
+  );
 }
 
 export function createGame(pairCount: number): GameState {
   const safePairCount = Math.max(1, pairCount);
   const tiles: Tile[] = [];
 
-  for (let i = 0; i < safePairCount * 2; i += 1) {
+  for (let pairIndex = 0; pairIndex < safePairCount; pairIndex += 1) {
+    const symbol = `S${pairIndex + 1}`;
     tiles.push({
-      id: `tile-${i + 1}`,
-      isFaceUp: false,
+      id: `tile-${pairIndex * 2 + 1}`,
+      symbol,
+      isFlipped: false,
       isMatched: false,
+      lockedBy: null,
+    });
+    tiles.push({
+      id: `tile-${pairIndex * 2 + 2}`,
+      symbol,
+      isFlipped: false,
+      isMatched: false,
+      lockedBy: null,
     });
   }
 
+  shuffleInPlace(tiles);
+
   return {
-    board: tiles,
+    tiles,
     players: [],
-    maxPlayers: 5,
+    scoreHistory: [],
+    isGameOver: false,
+    startTime: null,
   };
 }
 
@@ -33,45 +69,61 @@ export function addPlayer(
   const playerName = trimmedName.length > 0 ? trimmedName : "Player";
 
   const existingPlayerIndex = state.players.findIndex((p) => p.id === playerId);
+  const now = Date.now();
 
   if (existingPlayerIndex !== -1) {
     const players = [...state.players];
     players[existingPlayerIndex] = {
       ...players[existingPlayerIndex],
       name: playerName,
-      connected: true,
+      isConnected: true,
     };
 
     return {
       ...state,
       players,
+      startTime: state.startTime ?? now,
     };
   }
 
-  if (state.players.length >= state.maxPlayers) {
+  const MAX_PLAYERS = 5;
+  if (state.players.length >= MAX_PLAYERS) {
     return state;
   }
 
+  const players = [
+    ...state.players,
+    {
+      id: playerId,
+      name: playerName,
+      score: 0,
+      isConnected: true,
+    },
+  ];
+
   return {
     ...state,
-    players: [
-      ...state.players,
-      {
-        id: playerId,
-        name: playerName,
-        score: 0,
-        connected: true,
-      },
-    ],
+    players,
+    scoreHistory: [...state.scoreHistory, buildScoreSnapshot(players, now)],
+    startTime: state.startTime ?? now,
   };
 }
 
 export function removePlayer(state: GameState, playerId: string): GameState {
+  const players = state.players.map((player) =>
+    player.id === playerId ? { ...player, isConnected: false } : player,
+  );
+
+  const tiles = state.tiles.map((tile) => {
+    if (tile.lockedBy !== playerId) return tile;
+    if (tile.isMatched) return { ...tile, lockedBy: null };
+    return { ...tile, lockedBy: null, isFlipped: false };
+  });
+
   return {
     ...state,
-    players: state.players.map((player) =>
-      player.id === playerId ? { ...player, connected: false } : player,
-    ),
+    players,
+    tiles,
   };
 }
 
@@ -81,20 +133,108 @@ export function selectTile(
   playerId: string,
 ): SelectTileResult {
   const hasPlayer = state.players.some((player) => player.id === playerId);
+  if (!hasPlayer) return { newState: state, event: null };
+  if (state.isGameOver) return { newState: state, event: null };
 
-  if (!hasPlayer) {
+  const tileIndex = state.tiles.findIndex((tile) => tile.id === tileId);
+  if (tileIndex === -1) return { newState: state, event: null };
+
+  const targetTile = state.tiles[tileIndex];
+  if (targetTile.isMatched) return { newState: state, event: null };
+  if (targetTile.lockedBy !== null && targetTile.lockedBy !== playerId) {
+    return { newState: state, event: null };
+  }
+  if (targetTile.lockedBy === playerId && targetTile.isFlipped) {
     return { newState: state, event: null };
   }
 
-  const board = state.board.map((tile) =>
-    tile.id === tileId ? { ...tile, isFaceUp: !tile.isFaceUp } : tile,
-  );
+  const selectedBefore = getPlayerSelectedTiles(state, playerId);
+  if (selectedBefore.length >= 2) {
+    return { newState: state, event: null };
+  }
+
+  const tiles = [...state.tiles];
+  tiles[tileIndex] = {
+    ...targetTile,
+    lockedBy: playerId,
+    isFlipped: true,
+  };
+
+  let newState: GameState = {
+    ...state,
+    tiles,
+  };
+
+  const selectedAfter = getPlayerSelectedTiles(newState, playerId);
+  if (selectedAfter.length === 2) {
+    const [t1, t2] = selectedAfter;
+    const result = checkMatch(newState, t1.id, t2.id, playerId);
+    newState = result.newState;
+    return {
+      newState,
+      event: result.isMatch ? "tiles:match" : "tiles:mismatch",
+    };
+  }
+
+  return {
+    newState,
+    event: "tile:selected",
+  };
+}
+
+export function checkMatch(
+  state: GameState,
+  t1: string,
+  t2: string,
+  playerId: string,
+): { newState: GameState; isMatch: boolean } {
+  if (t1 === t2) return { newState: state, isMatch: false };
+
+  const idx1 = state.tiles.findIndex((tile) => tile.id === t1);
+  const idx2 = state.tiles.findIndex((tile) => tile.id === t2);
+  if (idx1 === -1 || idx2 === -1) return { newState: state, isMatch: false };
+
+  const tile1 = state.tiles[idx1];
+  const tile2 = state.tiles[idx2];
+  if (tile1.isMatched || tile2.isMatched) return { newState: state, isMatch: false };
+  if (tile1.lockedBy !== playerId || tile2.lockedBy !== playerId) {
+    return { newState: state, isMatch: false };
+  }
+
+  const isMatch = tile1.symbol === tile2.symbol;
+  const tiles = [...state.tiles];
+  const now = Date.now();
+
+  if (isMatch) {
+    tiles[idx1] = { ...tile1, isMatched: true, lockedBy: null, isFlipped: true };
+    tiles[idx2] = { ...tile2, isMatched: true, lockedBy: null, isFlipped: true };
+
+    const players = state.players.map((player) =>
+      player.id === playerId ? { ...player, score: player.score + 1 } : player,
+    );
+
+    const isGameOver = tiles.every((tile) => tile.isMatched);
+    return {
+      newState: {
+        ...state,
+        tiles,
+        players,
+        scoreHistory: [...state.scoreHistory, buildScoreSnapshot(players, now)],
+        isGameOver,
+      },
+      isMatch: true,
+    };
+  }
+
+  // No match: devolver ambas fichas a boca abajo y liberarlas.
+  tiles[idx1] = { ...tile1, isFlipped: false, lockedBy: null };
+  tiles[idx2] = { ...tile2, isFlipped: false, lockedBy: null };
 
   return {
     newState: {
       ...state,
-      board,
+      tiles,
     },
-    event: null,
+    isMatch: false,
   };
 }
