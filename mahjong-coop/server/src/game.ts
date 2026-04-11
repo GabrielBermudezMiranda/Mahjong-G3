@@ -200,17 +200,49 @@ export function selectTile(
   state: GameState,
   tileId: number,
   matchedTileIds?: number[],
+  playerId?: string,
 ): SelectTileResult {
   // Si el frontend envía que tienes dos fichas matcheadas, marcarlas
   if (matchedTileIds && matchedTileIds.length === 2) {
+    const uniqueTileIds = Array.from(new Set(matchedTileIds));
+    if (uniqueTileIds.length !== 2) {
+      return {
+        newState: state,
+        event: null,
+      };
+    }
+
+    const selectedTiles = state.tiles.filter((tile) => uniqueTileIds.includes(tile.id));
+    if (selectedTiles.length !== 2 || selectedTiles.some((tile) => tile.isMatched)) {
+      return {
+        newState: state,
+        event: null,
+      };
+    }
+
     const tiles = state.tiles.map((tile) =>
-      matchedTileIds.includes(tile.id) ? { ...tile, isMatched: true } : tile,
+      uniqueTileIds.includes(tile.id) ? { ...tile, isMatched: true } : tile,
     );
+
+    const players = playerId
+      ? state.players.map((player) =>
+          player.id === playerId
+            ? { ...player, score: player.score + 100 }
+            : player,
+        )
+      : state.players;
+
+    const now = Date.now();
+    const scoreHistory = playerId
+      ? [...state.scoreHistory, buildScoreSnapshot(players, now)]
+      : state.scoreHistory;
 
     const allMatched = tiles.every((tile) => tile.isMatched);
     const newState: GameState = {
       ...state,
       tiles,
+      players,
+      scoreHistory,
       isGameOver: allMatched,
     };
 

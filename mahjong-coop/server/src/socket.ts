@@ -220,7 +220,7 @@ export function setupSocket(io: Server): void {
 			const room = rooms.get(roomId);
 			if (!room) return;
 
-			const result = selectTile(room.gameState, payload.tileIds[0], payload.tileIds);
+			const result = selectTile(room.gameState, payload.tileIds[0], payload.tileIds, socket.id);
 			room.gameState = result.newState;
 			io.to(roomId).emit("game:state", room.gameState);
 		});

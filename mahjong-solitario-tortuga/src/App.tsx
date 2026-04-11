@@ -86,6 +86,13 @@ type TileType = {
   isHinted: boolean;
 };
 
+type OnlinePlayer = {
+  id: string;
+  name: string;
+  score: number;
+  isConnected: boolean;
+};
+
 const TILE_WIDTH = 48;
 const TILE_HEIGHT = 68;
 const DEPTH_OFFSET = 5;
@@ -99,6 +106,8 @@ const SYMBOLS = {
   seasons: ['🀦', '🀧', '🀨', '🀩'],
   flowers: ['🀢', '🀣', '🀤', '🀥'],
 };
+
+const OPPONENT_COLORS = ['#f59e0b', '#10b981', '#3b82f6', '#ef4444', '#8b5cf6', '#06b6d4'];
 
 // --- Generación del Tablero ---
 
@@ -287,9 +296,11 @@ export default function App() {
     setScoreHistory([{ time: 0, [playerName || 'Tú']: 0 }]);
     setCombo(0);
     setStats({ matches: 0, clicks: 0 });
-    
-    // Generar oponentes si es multijugador
-    if (playerCount > 1) {
+
+    // En online, los oponentes vienen del servidor; en local se simulan bots
+    if (isOnline) {
+      setOpponents([]);
+    } else if (playerCount > 1) {
       const names = ['Sun Tzu', 'Zhuge Liang', 'Laozi', 'Confucio'];
       const colors = ['#f59e0b', '#10b981', '#3b82f6', '#ef4444'];
       const newOpponents = names.slice(0, playerCount - 1).map((name, i) => ({
@@ -307,7 +318,33 @@ export default function App() {
     } else {
       setOpponents([]);
     }
-  }, [playerName, playerCount]);
+  }, [playerName, playerCount, isOnline]);
+
+  const syncOnlinePlayers = useCallback((players: OnlinePlayer[]) => {
+    if (!isOnline) return;
+
+    const connectedPlayers = players.filter((p) => p.isConnected);
+    setCurrentPlayers(connectedPlayers.length);
+
+    const socketId = socketService.getSocketId();
+    const selfById = socketId ? connectedPlayers.find((p) => p.id === socketId) : undefined;
+    const fallbackName = playerName || 'Tú';
+    const selfPlayer = selfById ?? connectedPlayers.find((p) => p.name === fallbackName);
+
+    if (selfPlayer) {
+      setScore(selfPlayer.score);
+    }
+
+    const opponentsFromServer = connectedPlayers
+      .filter((p) => (selfPlayer ? p.id !== selfPlayer.id : p.name !== fallbackName))
+      .map((p, i) => ({
+        name: p.name,
+        score: p.score,
+        color: OPPONENT_COLORS[i % OPPONENT_COLORS.length],
+      }));
+
+    setOpponents(opponentsFromServer);
+  }, [isOnline, playerName]);
 
   const handleCreateRoom = () => {
     if (!roomName.trim()) return;
@@ -381,11 +418,10 @@ export default function App() {
     };
 
     const handleGameState = (state: any) => {
+      const playersFromServer: OnlinePlayer[] = Array.isArray(state.players) ? state.players : [];
+      syncOnlinePlayers(playersFromServer);
+
       if (gameState === 'lobby') {
-        // Actualizar número de jugadores REALES del servidor
-        const connectedCount = state.players.filter((p: any) => p.isConnected).length;
-        setCurrentPlayers(connectedCount);
-        
         // Si el juego ha comenzado en el servidor, ir a loading
         if (state.hasStarted) {
           startMatch();
@@ -415,7 +451,7 @@ export default function App() {
       socketService.off('game:state', handleGameState);
       socketService.off('room:error', handleRoomError);
     };
-  }, [gameState]);
+  }, [gameState, syncOnlinePlayers]);
 
   const copyCode = () => {
     navigator.clipboard.writeText(roomCode);
@@ -494,7 +530,7 @@ export default function App() {
 
   // Simular progreso de oponentes
   useEffect(() => {
-    if (gameState === 'playing' && playerCount > 1 && isActive && !gameOver) {
+    if (!isOnline && gameState === 'playing' && playerCount > 1 && isActive && !gameOver) {
       const interval = setInterval(() => {
         setOpponents(prev => prev.map(op => ({
           ...op,
@@ -503,7 +539,7 @@ export default function App() {
       }, 3000);
       return () => clearInterval(interval);
     }
-  }, [gameState, playerCount, isActive, gameOver]);
+  }, [gameState, playerCount, isActive, gameOver, isOnline]);
 
   // Actualizar historial de puntuación cada 2 segundos
   useEffect(() => {
@@ -554,7 +590,9 @@ export default function App() {
           ? { ...t, isMatched: true, isSelected: false, isHinted: false } 
           : { ...t, isHinted: false }
         ));
-        setScore(prev => prev + 100 + (combo * 20));
+        if (!isOnline) {
+          setScore(prev => prev + 100 + (combo * 20));
+        }
         setSelectedId(null);
         
         // Si es online, notificar al servidor

@@ -64,6 +64,10 @@ class SocketService {
     return this.isEnabled && this.socket?.connected === true;
   }
 
+  getSocketId(): string | null {
+    return this.socket?.id ?? null;
+  }
+
   connect(): void {
     if (this.socket && !this.socket.connected) {
       this.socket.connect();
