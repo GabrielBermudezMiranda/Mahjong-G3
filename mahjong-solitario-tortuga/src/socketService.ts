@@ -85,10 +85,11 @@ class SocketService {
     }
   }
 
-  createRoom(name: string, requiredPlayers: number): void {
+  createRoom(name: string, requiredPlayers: number, playerName?: string): void {
     this.emit('room:create', {
       name,
       requiredPlayers,
+      playerName: playerName || 'Host',
     });
   }
 

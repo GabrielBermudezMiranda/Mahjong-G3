@@ -251,6 +251,8 @@ export default function App() {
   const [stats, setStats] = useState({ matches: 0, clicks: 0 });
   const [isOnline, setIsOnline] = useState(false);
   const [roomId, setRoomId] = useState<string>('');
+  const [isHost, setIsHost] = useState(false);
+  const [requiredPlayersCount, setRequiredPlayersCount] = useState(1);
 
   // Encontrar parejas disponibles
   const getAvailablePairsCount = useCallback(() => {
@@ -319,7 +321,8 @@ export default function App() {
     if (playerCount > 1) {
       // Multijugador: usar socket
       setIsOnline(true);
-      socketService.createRoom(roomName, playerCount);
+      setIsHost(true);
+      socketService.createRoom(roomName, playerCount, playerName);
     } else {
       // Solo: usando código local
       const code = generateCode();
@@ -332,17 +335,10 @@ export default function App() {
   const handleJoinRoom = () => {
     if (inputCode.length !== 6) return;
     
-    if (playerCount > 1) {
-      // Multijugador: usar socket
-      setIsOnline(true);
-      socketService.joinRoom(inputCode.toUpperCase(), playerName);
-    } else {
-      // Solo: usando código local
-      setRoomCode(inputCode.toUpperCase());
-      setRoomName("SALA DE JUEGO");
-      setCurrentPlayers(Math.floor(Math.random() * (playerCount - 1)) + 1);
-      setGameState('lobby');
-    }
+    // Siempre es online para multijugador
+    setIsOnline(true);
+    setIsHost(false); // El que se une NO es host
+    socketService.joinRoom(inputCode.toUpperCase(), playerName);
   };
 
   const startMatch = () => {
@@ -382,6 +378,7 @@ export default function App() {
     const handleRoomCreated = (payload: { roomId: string; name: string; requiredPlayers: number }) => {
       setRoomId(payload.roomId);
       setRoomCode(payload.roomId.substring(0, 6).toUpperCase());
+      setRequiredPlayersCount(payload.requiredPlayers);
       setCurrentPlayers(1);
       setGameState('lobby');
     };
@@ -391,6 +388,11 @@ export default function App() {
         // Actualizar número de jugadores REALES del servidor
         const connectedCount = state.players.filter((p: any) => p.isConnected).length;
         setCurrentPlayers(connectedCount);
+        
+        // Actualizar requiredPlayers si no está seteado
+        if (!requiredPlayersCount || requiredPlayersCount === 1) {
+          setRequiredPlayersCount(state.requiredPlayers || playerCount);
+        }
         
         // Si el juego ha comenzado en el servidor, ir a loading
         if (state.hasStarted) {
@@ -407,6 +409,7 @@ export default function App() {
       alert(error);
       setGameState('menu');
       setIsOnline(false);
+      setIsHost(false);
     };
 
     socketService.on('room:created', handleRoomCreated);
@@ -418,7 +421,7 @@ export default function App() {
       socketService.off('game:state', handleGameState);
       socketService.off('room:error', handleRoomError);
     };
-  }, [isOnline, gameState]);
+  }, [isOnline, gameState, requiredPlayersCount, playerCount]);
 
   const copyCode = () => {
     navigator.clipboard.writeText(roomCode);
@@ -955,9 +958,10 @@ export default function App() {
               ABANDONAR
             </button>
             <button 
-              disabled={currentPlayers < playerCount}
+              disabled={currentPlayers < playerCount || (isOnline && !isHost)}
               onClick={startMatch}
-              className="flex-[2] py-4 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-emerald-950 font-black text-lg rounded-2xl transition-all shadow-lg active:scale-95"
+              title={isOnline && !isHost ? "Solo el host puede iniciar la partida" : ""}
+              className="flex-[2] py-4 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed text-emerald-950 font-black text-lg rounded-2xl transition-all shadow-lg active:scale-95"
             >
               INICIAR PARTIDA
             </button>

@@ -12,6 +12,7 @@ interface CreateRoomPayload {
 	name?: string;
 	requiredPlayers?: number;
 	pairCount?: number;
+	playerName?: string;
 }
 
 interface JoinRoomPayload {
@@ -121,11 +122,21 @@ export function setupSocket(io: Server): void {
 		socket.on("room:create", (payload?: CreateRoomPayload) => {
 			const room = createRoom(payload);
 			emitRoomList(io);
+			
+			// El creador se une automáticamente a su propia sala
+			socket.join(room.id);
+			room.gameState = addPlayer(room.gameState, socket.id, payload?.playerName || "Host");
+			playerRoomBySocket.set(socket.id, room.id);
+			
+			// Notificar al creador que la sala fue creada
 			socket.emit("room:created", {
 				roomId: room.id,
 				name: room.name,
 				requiredPlayers: room.gameState.requiredPlayers,
 			});
+			
+			// Emitir estado actualizado a todos en la sala
+			io.to(room.id).emit("game:state", room.gameState);
 		});
 
 		socket.on("room:join", (payload: JoinRoomPayload) => {
