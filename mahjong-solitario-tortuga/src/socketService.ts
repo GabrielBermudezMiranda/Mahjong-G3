@@ -22,6 +22,7 @@ export interface GameStateData {
 
 export interface RoomSummary {
   id: string;
+  code: string;
   name: string;
   currentPlayers: number;
   requiredPlayers: number;
@@ -63,6 +64,12 @@ class SocketService {
     return this.isEnabled && this.socket?.connected === true;
   }
 
+  connect(): void {
+    if (this.socket && !this.socket.connected) {
+      this.socket.connect();
+    }
+  }
+
   on(event: string, callback: (data: any) => void): void {
     if (this.socket) {
       this.socket.on(event, callback);
@@ -80,9 +87,11 @@ class SocketService {
   }
 
   emit(event: string, data?: any): void {
-    if (this.socket?.connected) {
-      this.socket.emit(event, data);
+    if (!this.socket) return;
+    if (!this.socket.connected) {
+      this.socket.connect();
     }
+    this.socket.emit(event, data);
   }
 
   createRoom(name: string, requiredPlayers: number, playerName?: string): void {

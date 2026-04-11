@@ -160,7 +160,8 @@ export function addPlayer(
     };
   }
 
-  if (state.players.length >= state.requiredPlayers) {
+  const connectedPlayersBeforeAdd = state.players.filter((player) => player.isConnected).length;
+  if (connectedPlayersBeforeAdd >= state.requiredPlayers) {
     return state;
   }
 
@@ -187,9 +188,7 @@ export function addPlayer(
 }
 
 export function removePlayer(state: GameState, playerId: string): GameState {
-  const players = state.players.map((player) =>
-    player.id === playerId ? { ...player, isConnected: false } : player,
-  );
+  const players = state.players.filter((player) => player.id !== playerId);
 
   return {
     ...state,

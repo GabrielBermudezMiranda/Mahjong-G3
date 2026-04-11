@@ -309,40 +309,23 @@ export default function App() {
     }
   }, [playerName, playerCount]);
 
-  const generateCode = () => {
-    return Math.random().toString(36).substring(2, 8).toUpperCase();
-  };
-
   const handleCreateRoom = () => {
     if (!roomName.trim()) return;
-    
-    if (playerCount > 1) {
-      // Multijugador: usar socket
-      setIsOnline(true);
-      socketService.createRoom(roomName, playerCount);
-    } else {
-      // Solo: usando código local
-      const code = generateCode();
-      setRoomCode(code);
-      setCurrentPlayers(1);
-      setGameState('lobby');
-    }
+
+    // En matchmaking siempre se crea una sala online
+    setIsOnline(true);
+    socketService.connect();
+    socketService.createRoom(roomName, playerCount, playerName);
   };
 
   const handleJoinRoom = () => {
     if (inputCode.length !== 6) return;
-    
-    if (playerCount > 1) {
-      // Multijugador: usar socket
-      setIsOnline(true);
-      socketService.joinRoom(inputCode.toUpperCase(), playerName);
-    } else {
-      // Solo: usando código local
-      setRoomCode(inputCode.toUpperCase());
-      setRoomName("SALA DE JUEGO");
-      setCurrentPlayers(Math.floor(Math.random() * (playerCount - 1)) + 1);
-      setGameState('lobby');
-    }
+
+    // Unirse por código siempre es online
+    const normalizedCode = inputCode.trim().toUpperCase();
+    setIsOnline(true);
+    socketService.connect();
+    socketService.joinRoom(normalizedCode, playerName);
   };
 
   const startMatch = () => {
@@ -377,11 +360,22 @@ export default function App() {
 
   // Socket.IO listeners para multijugador ONLINE
   useEffect(() => {
-    if (!isOnline) return;
-
     const handleRoomCreated = (payload: { roomId: string; code: string; name: string; requiredPlayers: number }) => {
+      setIsOnline(true);
       setRoomId(payload.roomId);
       setRoomCode(payload.code);
+      setRoomName(payload.name);
+      setPlayerCount(payload.requiredPlayers);
+      setCurrentPlayers(1);
+      setGameState('lobby');
+    };
+
+    const handleRoomJoined = (payload: { roomId: string; code: string; name: string; requiredPlayers: number }) => {
+      setIsOnline(true);
+      setRoomId(payload.roomId);
+      setRoomCode(payload.code);
+      setRoomName(payload.name);
+      setPlayerCount(payload.requiredPlayers);
       setCurrentPlayers(1);
       setGameState('lobby');
     };
@@ -406,19 +400,22 @@ export default function App() {
       console.error('Room error:', error);
       alert(error);
       setGameState('menu');
+      socketService.disconnect();
       setIsOnline(false);
     };
 
     socketService.on('room:created', handleRoomCreated);
+    socketService.on('room:joined', handleRoomJoined);
     socketService.on('game:state', handleGameState);
     socketService.on('room:error', handleRoomError);
 
     return () => {
       socketService.off('room:created', handleRoomCreated);
+      socketService.off('room:joined', handleRoomJoined);
       socketService.off('game:state', handleGameState);
       socketService.off('room:error', handleRoomError);
     };
-  }, [isOnline, gameState]);
+  }, [gameState]);
 
   const copyCode = () => {
     navigator.clipboard.writeText(roomCode);
@@ -429,6 +426,10 @@ export default function App() {
   const backToMenu = () => {
     setGameState('menu');
     setIsActive(false);
+    setRoomId('');
+    setRoomCode('');
+    setInputCode('');
+    setCurrentPlayers(1);
     if (isOnline) {
       socketService.disconnect();
       setIsOnline(false);
@@ -947,7 +948,7 @@ export default function App() {
 
           <div className="pt-4 flex gap-4">
             <button 
-              onClick={() => setGameState('menu')}
+              onClick={backToMenu}
               className={`flex-1 py-4 rounded-2xl font-black text-sm transition-all border-2 ${
                 isDarkMode ? 'bg-stone-800 border-stone-700 text-stone-400 hover:text-white' : 'bg-stone-50 border-stone-200 text-stone-500 hover:text-stone-900'
               }`}

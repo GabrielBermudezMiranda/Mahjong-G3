@@ -17,8 +17,9 @@ interface CreateRoomPayload {
 }
 
 interface JoinRoomPayload {
-	code: string;
-	name: string;
+	code?: string;
+	roomId?: string;
+	name?: string;
 }
 
 const DEFAULT_ROOM_ID = "sala-principal";
@@ -49,6 +50,10 @@ function generateRoomCode(): string {
 	}
 	
 	return code;
+}
+
+function normalizeRoomCode(value: string | undefined): string {
+	return (value ?? "").trim().toUpperCase();
 }
 
 function getRoomSummaries(): RoomSummary[] {
@@ -102,6 +107,27 @@ function ensureDefaultRoom(): void {
 	codeToRoomId.set("MAIN00", DEFAULT_ROOM_ID);
 }
 
+function leaveCurrentRoom(io: Server, socket: Socket): void {
+	const previousRoomId = playerRoomBySocket.get(socket.id);
+	if (!previousRoomId) return;
+
+	const previousRoom = rooms.get(previousRoomId);
+	if (previousRoom) {
+		previousRoom.gameState = removePlayer(previousRoom.gameState, socket.id);
+		const connectedPlayers = previousRoom.gameState.players.filter((player) => player.isConnected).length;
+
+		if (connectedPlayers === 0 && previousRoomId !== DEFAULT_ROOM_ID) {
+			rooms.delete(previousRoomId);
+			codeToRoomId.delete(previousRoom.code);
+		} else {
+			io.to(previousRoomId).emit("game:state", previousRoom.gameState);
+		}
+	}
+
+	socket.leave(previousRoomId);
+	playerRoomBySocket.delete(socket.id);
+}
+
 function joinRoom(
 	io: Server,
 	socket: Socket,
@@ -120,19 +146,18 @@ function joinRoom(
 		return;
 	}
 
-	const previousRoomId = playerRoomBySocket.get(socket.id);
-	if (previousRoomId && previousRoomId !== roomId) {
-		const previousRoom = rooms.get(previousRoomId);
-		if (previousRoom) {
-			previousRoom.gameState = removePlayer(previousRoom.gameState, socket.id);
-			io.to(previousRoom.id).emit("game:state", previousRoom.gameState);
-		}
-		socket.leave(previousRoomId);
-	}
+	leaveCurrentRoom(io, socket);
 
 	socket.join(roomId);
 	room.gameState = addPlayer(room.gameState, socket.id, playerName);
 	playerRoomBySocket.set(socket.id, roomId);
+
+	socket.emit("room:joined", {
+		roomId: room.id,
+		code: room.code,
+		name: room.name,
+		requiredPlayers: room.gameState.requiredPlayers,
+	});
 
 	io.to(roomId).emit("game:state", room.gameState);
 	emitRoomList(io);
@@ -146,16 +171,13 @@ export function setupSocket(io: Server): void {
 		console.log(`Client connected: ${socket.id}`);
 
 		socket.emit("rooms:list", getRoomSummaries());
-		const defaultRoom = rooms.get(DEFAULT_ROOM_ID);
-		if (defaultRoom) {
-			socket.emit("game:state", defaultRoom.gameState);
-		}
 
 		socket.on("room:create", (payload?: CreateRoomPayload) => {
 			const room = createRoom(payload);
 			emitRoomList(io);
-			
+
 			// El creador se une automáticamente a su propia sala
+			leaveCurrentRoom(io, socket);
 			socket.join(room.id);
 			room.gameState = addPlayer(room.gameState, socket.id, payload?.playerName || "Host");
 			playerRoomBySocket.set(socket.id, room.id);
@@ -172,18 +194,23 @@ export function setupSocket(io: Server): void {
 			io.to(room.id).emit("game:state", room.gameState);
 		});
 
-		socket.on("room:join", (payload: { code: string; name: string }) => {
-			// Resolver el código a roomId
-			const roomId = codeToRoomId.get(payload.code);
+		socket.on("room:join", (payload?: JoinRoomPayload) => {
+			const code = normalizeRoomCode(payload?.code ?? payload?.roomId);
+			if (!code) {
+				socket.emit("room:error", "Código de sala inválido.");
+				return;
+			}
+
+			const roomIdFromCode = codeToRoomId.get(code);
+			const roomIdFromLegacyField = payload?.roomId && rooms.has(payload.roomId) ? payload.roomId : undefined;
+			const roomId = roomIdFromCode ?? roomIdFromLegacyField;
+
 			if (!roomId) {
 				socket.emit("room:error", "Código de sala inválido.");
 				return;
 			}
-			joinRoom(io, socket, roomId, payload.name);
-		});
 
-		socket.on("player:join", (name: string) => {
-			joinRoom(io, socket, DEFAULT_ROOM_ID, name);
+			joinRoom(io, socket, roomId, payload?.name ?? "Player");
 		});
 
 		socket.on("tile:select", (payload: { tileIds: number[] }) => {
@@ -199,24 +226,7 @@ export function setupSocket(io: Server): void {
 		});
 
 		socket.on("disconnect", () => {
-			const roomId = playerRoomBySocket.get(socket.id);
-			if (!roomId) return;
-
-			const room = rooms.get(roomId);
-			if (!room) return;
-
-			room.gameState = removePlayer(room.gameState, socket.id);
-			playerRoomBySocket.delete(socket.id);
-			
-			// Eliminar sala si no hay jugadores conectados y no es la sala principal
-			const connectedPlayers = room.gameState.players.filter((p) => p.isConnected).length;
-			if (connectedPlayers === 0 && roomId !== DEFAULT_ROOM_ID) {
-				rooms.delete(roomId);
-				codeToRoomId.delete(room.code);
-			} else {
-				io.to(roomId).emit("game:state", room.gameState);
-			}
-			
+			leaveCurrentRoom(io, socket);
 			emitRoomList(io);
 		});
 	});
