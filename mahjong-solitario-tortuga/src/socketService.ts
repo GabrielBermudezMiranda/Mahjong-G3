@@ -93,9 +93,9 @@ class SocketService {
     });
   }
 
-  joinRoom(roomId: string, playerName: string): void {
+  joinRoom(code: string, playerName: string): void {
     this.emit('room:join', {
-      roomId,
+      code,
       name: playerName,
     });
   }

@@ -35,6 +35,7 @@ export interface GameState {
 
 export interface RoomSummary {
   id: string;
+  code: string;
   name: string;
   currentPlayers: number;
   requiredPlayers: number;
