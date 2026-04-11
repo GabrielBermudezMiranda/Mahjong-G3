@@ -1,28 +1,23 @@
 import { io, Socket } from 'socket.io-client';
 
-export interface Player {
-  id: string;
-  name: string;
-  score: number;
-  isConnected: boolean;
-}
-
-export interface Tile {
-  id: string;
+export interface GameTile {
+  id: number;
+  x: number;
+  y: number;
+  z: number;
   symbol: string;
-  isFlipped: boolean;
+  category: string;
+  value: number;
   isMatched: boolean;
-  lockedBy: string | null;
+  isSelected: boolean;
+  isHinted: boolean;
 }
 
-export interface GameState {
-  tiles: Tile[];
-  players: Player[];
-  scoreHistory: any[];
-  isGameOver: boolean;
-  startTime: number | null;
-  requiredPlayers: number;
+export interface GameStateData {
+  tiles: GameTile[];
+  players: { id: string; name: string; score: number; isConnected: boolean }[];
   hasStarted: boolean;
+  isGameOver: boolean;
 }
 
 export interface RoomSummary {
@@ -33,105 +28,86 @@ export interface RoomSummary {
   hasStarted: boolean;
 }
 
-const SOCKET_SERVER_URL = (import.meta.env.VITE_SOCKET_URL as string) || 'https://mahjong-g3-production.up.railway.app';
-
 class SocketService {
   private socket: Socket | null = null;
-  private listeners: Map<string, Set<Function>> = new Map();
+  private isEnabled = false;
 
-  connect(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      try {
-        if (this.socket) {
-          this.socket.disconnect();
-          this.socket = null;
-        }
-
-        this.socket = io(SOCKET_SERVER_URL, {
-          transports: ['websocket', 'polling'],
-          withCredentials: false,
-          reconnection: true,
-          reconnectionDelay: 1000,
-          reconnectionDelayMax: 5000,
-          reconnectionAttempts: 10,
-        });
-
-        const connectionTimeout = setTimeout(() => {
-          if (!this.socket?.connected) {
-            reject(new Error(`Failed to connect to server at ${SOCKET_SERVER_URL}`));
-          }
-        }, 5000);
-
-        this.socket.on('connect', () => {
-          clearTimeout(connectionTimeout);
-          this.emit('connected');
-          resolve();
-        });
-
-        this.socket.on('connect_error', (error) => {
-          clearTimeout(connectionTimeout);
-          reject(error);
-        });
-
-        this.socket.on('disconnect', () => {
-          this.emit('disconnected');
-        });
-
-        this.socket.on('game:state', (gameState: GameState) => {
-          this.emit('game:state', gameState);
-        });
-
-        this.socket.on('rooms:list', (rooms: RoomSummary[]) => {
-          this.emit('rooms:list', rooms);
-        });
-
-        this.socket.on('room:created', (data: any) => {
-          this.emit('room:created', data);
-        });
-
-        this.socket.on('room:error', (message: string) => {
-          this.emit('room:error', message);
-        });
-      } catch (error) {
-        reject(error);
-      }
+  constructor() {
+    const socketUrl = (import.meta as any).env.VITE_SOCKET_URL || 
+                      'https://mahjong-g3-production.up.railway.app';
+    
+    this.socket = io(socketUrl, {
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      reconnectionAttempts: 10,
+      transports: ['websocket', 'polling'],
     });
+
+    this.socket.on('connect', () => {
+      console.log('Connected to server');
+      this.isEnabled = true;
+    });
+
+    this.socket.on('connect_error', (error) => {
+      console.warn('Connection error:', error);
+    });
+
+    this.socket.on('disconnect', () => {
+      console.log('Disconnected from server');
+      this.isEnabled = false;
+    });
+  }
+
+  isConnected(): boolean {
+    return this.isEnabled && this.socket?.connected === true;
+  }
+
+  on(event: string, callback: (data: any) => void): void {
+    if (this.socket) {
+      this.socket.on(event, callback);
+    }
+  }
+
+  off(event: string, callback?: (data: any) => void): void {
+    if (this.socket) {
+      if (callback) {
+        this.socket.off(event, callback);
+      } else {
+        this.socket.off(event);
+      }
+    }
+  }
+
+  emit(event: string, data?: any): void {
+    if (this.socket?.connected) {
+      this.socket.emit(event, data);
+    }
+  }
+
+  createRoom(name: string, requiredPlayers: number): void {
+    this.emit('room:create', {
+      name,
+      requiredPlayers,
+    });
+  }
+
+  joinRoom(roomId: string, playerName: string): void {
+    this.emit('room:join', {
+      roomId,
+      name: playerName,
+    });
+  }
+
+  submitTileMatch(tileIds: number[]): void {
+    if (tileIds.length === 2) {
+      this.emit('tile:select', { tileIds });
+    }
   }
 
   disconnect(): void {
     if (this.socket) {
       this.socket.disconnect();
-      this.socket = null;
-    }
-  }
-
-  createRoom(payload: { name?: string; requiredPlayers?: number; pairCount?: number }): void {
-    this.socket?.emit('room:create', payload);
-  }
-
-  joinRoom(roomId: string, playerName: string): void {
-    this.socket?.emit('room:join', { roomId, name: playerName });
-  }
-
-  selectTile(tileId: string): void {
-    this.socket?.emit('tile:select', tileId);
-  }
-
-  on(event: string, callback: Function): void {
-    if (!this.listeners.has(event)) {
-      this.listeners.set(event, new Set());
-    }
-    this.listeners.get(event)?.add(callback);
-  }
-
-  off(event: string, callback: Function): void {
-    this.listeners.get(event)?.delete(callback);
-  }
-
-  private emit(event: string, ...args: any[]): void {
-    const callbacks = this.listeners.get(event);
-    if (callbacks) {
-      callbacks.forEach((callback) => callback(...args));
     }
   }
 }

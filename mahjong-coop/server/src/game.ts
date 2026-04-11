@@ -20,37 +20,104 @@ function buildScoreSnapshot(players: Player[], timestamp: number): ScoreSnapshot
   return { timestamp, scores };
 }
 
-function getPlayerSelectedTiles(state: GameState, playerId: string): Tile[] {
-  return state.tiles.filter(
-    (tile) =>
-      tile.lockedBy === playerId && !tile.isMatched && tile.isFlipped,
-  );
+function getClassicTurtlePositions(): { x: number; y: number; z: number }[] {
+  const pos: { x: number; y: number; z: number }[] = [];
+  
+  // Capa 0: 87 fichas
+  for (let y = 1; y <= 6; y++) {
+    for (let x = 2; x <= 13; x++) {
+      pos.push({ x, y, z: 0 });
+    }
+  }
+  for (let x = 4; x <= 9; x++) {
+    pos.push({ x, y: 0, z: 0 });
+    pos.push({ x, y: 7, z: 0 });
+  }
+  pos.push({ x: 1, y: 3.5, z: 0 });
+  pos.push({ x: 14, y: 3.5, z: 0 });
+  pos.push({ x: 15, y: 3.5, z: 0 });
+  
+  // Capa 1: 36 fichas
+  for (let y = 1; y <= 6; y++) {
+    for (let x = 4; x <= 9; x++) {
+      pos.push({ x: x + 0.5, y: y + 0.5, z: 1 });
+    }
+  }
+  
+  // Capa 2: 16 fichas
+  for (let y = 2; y <= 5; y++) {
+    for (let x = 5; x <= 8; x++) {
+      pos.push({ x: x + 1, y: y + 1, z: 2 });
+    }
+  }
+  
+  // Capa 3: 4 fichas
+  for (let y = 3; y <= 4; y++) {
+    for (let x = 6; x <= 7; x++) {
+      pos.push({ x: x + 1.5, y: y + 1.5, z: 3 });
+    }
+  }
+  
+  // Capa 4: 1 ficha
+  pos.push({ x: 8, y: 4.5, z: 4 });
+
+  return pos.slice(0, 144);
 }
 
-export function createGame(pairCount: number, requiredPlayers = 5): GameState {
-  const safePairCount = Math.max(1, pairCount);
-  const safeRequiredPlayers = Math.max(2, Math.min(8, requiredPlayers));
-  const tiles: Tile[] = [];
+function createTiles(positions: { x: number; y: number; z: number }[]): Tile[] {
+  const SYMBOLS = {
+    dots: ['🀙', '🀚', '🀛', '🀜', '🀝', '🀞', '🀟', '🀠', '🀡'],
+    bamboo: ['🀐', '🀑', '🀒', '🀓', '🀔', '🀕', '🀖', '🀗', '🀘'],
+    chars: ['🀇', '🀈', '🀉', '🀊', '🀋', '🀌', '🀍', '🀎', '🀏'],
+    winds: ['🀀', '🀁', '🀂', '🀃'],
+    dragons: ['🀄', '🀅', '🀆'],
+    seasons: ['🀦', '🀧', '🀨', '🀩'],
+    flowers: ['🀢', '🀣', '🀤', '🀥'],
+  };
 
-  for (let pairIndex = 0; pairIndex < safePairCount; pairIndex += 1) {
-    const symbol = `S${pairIndex + 1}`;
-    tiles.push({
-      id: `tile-${pairIndex * 2 + 1}`,
-      symbol,
-      isFlipped: false,
-      isMatched: false,
-      lockedBy: null,
+  const types: { symbol: string; category: string; value: number }[] = [];
+  
+  // 3 suits * 9 numbers * 4 each = 108
+  ['dots', 'bamboo', 'chars'].forEach((cat) => {
+    SYMBOLS[cat as keyof typeof SYMBOLS].forEach((sym, i) => {
+      for (let k = 0; k < 4; k++) types.push({ symbol: sym, category: cat, value: i });
     });
-    tiles.push({
-      id: `tile-${pairIndex * 2 + 2}`,
-      symbol,
-      isFlipped: false,
-      isMatched: false,
-      lockedBy: null,
-    });
-  }
+  });
+  // 4 winds * 4 each = 16
+  SYMBOLS.winds.forEach((sym, i) => {
+    for (let k = 0; k < 4; k++) types.push({ symbol: sym, category: 'winds', value: i });
+  });
+  // 3 dragons * 4 each = 12
+  SYMBOLS.dragons.forEach((sym, i) => {
+    for (let k = 0; k < 4; k++) types.push({ symbol: sym, category: 'dragons', value: i });
+  });
+  // 4 seasons * 1 each = 4
+  SYMBOLS.seasons.forEach((sym, i) => {
+    types.push({ symbol: sym, category: 'seasons', value: i });
+  });
+  // 4 flowers * 1 each = 4
+  SYMBOLS.flowers.forEach((sym, i) => {
+    types.push({ symbol: sym, category: 'flowers', value: i });
+  });
 
-  shuffleInPlace(tiles);
+  shuffleInPlace(types);
+
+  return positions.map((pos, i) => ({
+    id: i,
+    ...pos,
+    ...types[i],
+    isMatched: false,
+    isSelected: false,
+    isHinted: false,
+  }));
+}
+
+export function createGame(pairCount: number, requiredPlayers = 2): GameState {
+  const safeRequiredPlayers = Math.max(1, Math.min(8, requiredPlayers));
+  
+  // Generar las 144 fichas con formación tortuga
+  const positions = getClassicTurtlePositions();
+  const tiles = createTiles(positions);
 
   return {
     tiles,
@@ -124,79 +191,46 @@ export function removePlayer(state: GameState, playerId: string): GameState {
     player.id === playerId ? { ...player, isConnected: false } : player,
   );
 
-  const tiles = state.tiles.map((tile) => {
-    if (tile.lockedBy !== playerId) return tile;
-    if (tile.isMatched) return { ...tile, lockedBy: null };
-    return { ...tile, lockedBy: null, isFlipped: false };
-  });
-
   return {
     ...state,
     players,
-    tiles,
   };
 }
 
 export function selectTile(
   state: GameState,
-  tileId: string,
-  playerId: string,
+  tileId: number,
+  matchedTileIds?: number[],
 ): SelectTileResult {
-  const hasPlayer = state.players.some((player) => player.id === playerId);
-  if (!hasPlayer) return { newState: state, event: null };
-  if (!state.hasStarted) return { newState: state, event: null };
-  if (state.isGameOver) return { newState: state, event: null };
+  // Si el frontend envía que tienes dos fichas matcheadas, marcarlas
+  if (matchedTileIds && matchedTileIds.length === 2) {
+    const tiles = state.tiles.map((tile) =>
+      matchedTileIds.includes(tile.id) ? { ...tile, isMatched: true } : tile,
+    );
 
-  const tileIndex = state.tiles.findIndex((tile) => tile.id === tileId);
-  if (tileIndex === -1) return { newState: state, event: null };
+    const allMatched = tiles.every((tile) => tile.isMatched);
+    const newState: GameState = {
+      ...state,
+      tiles,
+      isGameOver: allMatched,
+    };
 
-  const targetTile = state.tiles[tileIndex];
-  if (targetTile.isMatched) return { newState: state, event: null };
-  if (targetTile.lockedBy !== null && targetTile.lockedBy !== playerId) {
-    return { newState: state, event: null };
-  }
-  if (targetTile.lockedBy === playerId && targetTile.isFlipped) {
-    return { newState: state, event: null };
-  }
-
-  const selectedBefore = getPlayerSelectedTiles(state, playerId);
-  if (selectedBefore.length >= 2) {
-    return { newState: state, event: null };
-  }
-
-  const tiles = [...state.tiles];
-  tiles[tileIndex] = {
-    ...targetTile,
-    lockedBy: playerId,
-    isFlipped: true,
-  };
-
-  let newState: GameState = {
-    ...state,
-    tiles,
-  };
-
-  const selectedAfter = getPlayerSelectedTiles(newState, playerId);
-  if (selectedAfter.length === 2) {
-    const [t1, t2] = selectedAfter;
-    const result = checkMatch(newState, t1.id, t2.id, playerId);
-    newState = result.newState;
     return {
       newState,
-      event: result.isMatch ? "tiles:match" : "tiles:mismatch",
+      event: allMatched ? "game:won" : "tiles:matched",
     };
   }
 
   return {
-    newState,
-    event: "tile:selected",
+    newState: state,
+    event: null,
   };
 }
 
 export function checkMatch(
   state: GameState,
-  t1: string,
-  t2: string,
+  t1: number,
+  t2: number,
   playerId: string,
 ): { newState: GameState; isMatch: boolean } {
   if (t1 === t2) return { newState: state, isMatch: false };
@@ -208,17 +242,14 @@ export function checkMatch(
   const tile1 = state.tiles[idx1];
   const tile2 = state.tiles[idx2];
   if (tile1.isMatched || tile2.isMatched) return { newState: state, isMatch: false };
-  if (tile1.lockedBy !== playerId || tile2.lockedBy !== playerId) {
-    return { newState: state, isMatch: false };
-  }
 
   const isMatch = tile1.symbol === tile2.symbol;
   const tiles = [...state.tiles];
   const now = Date.now();
 
   if (isMatch) {
-    tiles[idx1] = { ...tile1, isMatched: true, lockedBy: null, isFlipped: true };
-    tiles[idx2] = { ...tile2, isMatched: true, lockedBy: null, isFlipped: true };
+    tiles[idx1] = { ...tile1, isMatched: true };
+    tiles[idx2] = { ...tile2, isMatched: true };
 
     const players = state.players.map((player) =>
       player.id === playerId ? { ...player, score: player.score + 1 } : player,
@@ -236,9 +267,6 @@ export function checkMatch(
       isMatch: true,
     };
   }
-
-  tiles[idx1] = { ...tile1, isFlipped: false, lockedBy: null };
-  tiles[idx2] = { ...tile2, isFlipped: false, lockedBy: null };
 
   return {
     newState: {

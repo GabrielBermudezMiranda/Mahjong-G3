@@ -1,9 +1,14 @@
 export interface Tile {
-  id: string;
+  id: number;
+  x: number;
+  y: number;
+  z: number;
   symbol: string;
-  isFlipped: boolean;
+  category: string;
+  value: number;
   isMatched: boolean;
-  lockedBy: string | null;
+  isSelected: boolean;
+  isHinted: boolean;
 }
 
 export interface Player {

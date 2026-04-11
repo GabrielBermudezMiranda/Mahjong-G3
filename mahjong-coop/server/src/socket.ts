@@ -136,14 +136,14 @@ export function setupSocket(io: Server): void {
 			joinRoom(io, socket, DEFAULT_ROOM_ID, name);
 		});
 
-		socket.on("tile:select", (tileId: string) => {
+		socket.on("tile:select", (payload: { tileIds: number[] }) => {
 			const roomId = playerRoomBySocket.get(socket.id);
 			if (!roomId) return;
 
 			const room = rooms.get(roomId);
 			if (!room) return;
 
-			const result = selectTile(room.gameState, tileId, socket.id);
+			const result = selectTile(room.gameState, payload.tileIds[0], payload.tileIds);
 			room.gameState = result.newState;
 			io.to(roomId).emit("game:state", room.gameState);
 		});
